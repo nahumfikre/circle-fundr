@@ -1,0 +1,95 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id          String           @id @default(uuid())
+  name        String
+  email       String           @unique
+  password    String
+  createdAt   DateTime         @default(now())
+  memberships Membership[]
+  workspaces  WorkspaceMember[]
+}
+
+model Workspace {
+  id          String           @id @default(uuid())
+  name        String
+  inviteCode  String?          @unique
+  createdAt   DateTime         @default(now())
+  members     WorkspaceMember[]
+  circles     Circle[]
+}
+
+
+model WorkspaceMember {
+  id           String     @id @default(uuid())
+  role         String     // "ADMIN" or "MEMBER"
+  userId       String
+  workspaceId  String
+  createdAt    DateTime   @default(now())
+
+  user         User       @relation(fields: [userId], references: [id])
+  workspace    Workspace  @relation(fields: [workspaceId], references: [id])
+
+  @@unique([userId, workspaceId])
+}
+
+model Circle {
+  id           String          @id @default(uuid())
+  name         String
+  description  String?
+  workspaceId  String
+  createdAt    DateTime        @default(now())
+
+  workspace    Workspace       @relation(fields: [workspaceId], references: [id])
+  members      Membership[]
+  events       PaymentEvent[]
+}
+
+model Membership {
+  id         String     @id @default(uuid())
+  userId     String
+  circleId   String
+  createdAt  DateTime   @default(now())
+
+  user       User       @relation(fields: [userId], references: [id])
+  circle     Circle     @relation(fields: [circleId], references: [id])
+  payments   Payment[]
+
+  @@unique([userId, circleId])
+}
+
+model PaymentEvent {
+  id         String    @id @default(uuid())
+  title      String
+  amount     Float
+  dueDate    DateTime
+  circleId   String
+  createdAt  DateTime  @default(now())
+
+  circle     Circle    @relation(fields: [circleId], references: [id])
+  payments   Payment[]
+}
+
+model Payment {
+  id               String        @id @default(uuid())
+  paymentEventId   String
+  membershipId     String
+  amountPaid       Float
+  method           String        // "STRIPE" or "MANUAL"
+  status           String        // "PAID", "PENDING", "FAILED"
+  stripeIntentId   String?
+  paidAt           DateTime?
+  createdAt        DateTime      @default(now())
+
+  event            PaymentEvent  @relation(fields: [paymentEventId], references: [id])
+  membership       Membership    @relation(fields: [membershipId], references: [id])
+
+  @@unique([paymentEventId, membershipId])
+}
