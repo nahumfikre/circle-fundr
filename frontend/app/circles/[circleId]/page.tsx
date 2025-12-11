@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { apiFetch, logout } from "@/lib/api";
 
 type Circle = {
   id: string;
@@ -30,8 +31,6 @@ export default function CirclePage() {
   const router = useRouter();
   const circleId = params.circleId;
 
-  const [token, setToken] = useState<string | null>(null);
-
   const [circle, setCircle] = useState<Circle | null>(null);
   const [events, setEvents] = useState<PaymentEvent[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -52,15 +51,7 @@ export default function CirclePage() {
   const [inviting, setInviting] = useState(false);
 
   useEffect(() => {
-    const stored =
-      typeof window !== "undefined"
-        ? localStorage.getItem("circlefundr_token")
-        : null;
-    setToken(stored);
-  }, []);
-
-  useEffect(() => {
-    if (!token || !circleId) {
+    if (!circleId) {
       setLoadingCircle(false);
       return;
     }
@@ -70,12 +61,9 @@ export default function CirclePage() {
         setLoadingCircle(true);
         setError(null);
 
-        const res = await fetch(
-          `http://localhost:4000/circles/${encodeURIComponent(circleId)}`,
+        const res = await apiFetch(
+          `/circles/${encodeURIComponent(circleId)}`,
           {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
             cache: "no-store",
           }
         );
@@ -107,21 +95,18 @@ export default function CirclePage() {
     }
 
     loadCircle();
-  }, [token, circleId]);
+  }, [circleId]);
 
-  async function loadEvents(currentToken: string, currentCircleId: string) {
+  async function loadEvents(currentCircleId: string) {
     try {
       setLoadingEvents(true);
       setError(null);
 
-      const url = `http://localhost:4000/payment-events/by-circle?circleId=${encodeURIComponent(
+      const url = `/payment-events/by-circle?circleId=${encodeURIComponent(
         currentCircleId
       )}`;
 
-      const res = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${currentToken}`,
-        },
+      const res = await apiFetch(url, {
         cache: "no-store",
       });
 
@@ -152,23 +137,20 @@ export default function CirclePage() {
   }
 
   useEffect(() => {
-    if (!token || !circleId) return;
-    loadEvents(token, circleId);
-  }, [token, circleId]);
+    if (!circleId) return;
+    loadEvents(circleId);
+  }, [circleId]);
 
-  async function loadMembers(currentToken: string, currentCircleId: string) {
+  async function loadMembers(currentCircleId: string) {
     try {
       setLoadingMembers(true);
       setError(null);
 
-      const url = `http://localhost:4000/memberships/by-circle?circleId=${encodeURIComponent(
+      const url = `/memberships/by-circle?circleId=${encodeURIComponent(
         currentCircleId
       )}`;
 
-      const res = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${currentToken}`,
-        },
+      const res = await apiFetch(url, {
         cache: "no-store",
       });
 
@@ -199,13 +181,13 @@ export default function CirclePage() {
   }
 
   useEffect(() => {
-    if (!token || !circleId) return;
-    loadMembers(token, circleId);
-  }, [token, circleId]);
+    if (!circleId) return;
+    loadMembers(circleId);
+  }, [circleId]);
 
   async function handleCreateEvent(e: React.FormEvent) {
     e.preventDefault();
-    if (!token || !circleId) return;
+    if (!circleId) return;
 
     const title = newTitle.trim();
     const amountNumber = Number(newAmount);
@@ -217,12 +199,8 @@ export default function CirclePage() {
       setCreatingEvent(true);
       setError(null);
 
-      const res = await fetch("http://localhost:4000/payment-events", {
+      const res = await apiFetch("/payment-events", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
         body: JSON.stringify({
           title,
           amount: amountNumber,
@@ -263,7 +241,7 @@ export default function CirclePage() {
 
   async function handleInviteMember(e: React.FormEvent) {
     e.preventDefault();
-    if (!token || !circleId) return;
+    if (!circleId) return;
 
     const email = inviteEmail.trim();
     const name = inviteName.trim();
@@ -274,12 +252,8 @@ export default function CirclePage() {
       setInviting(true);
       setError(null);
 
-      const res = await fetch("http://localhost:4000/memberships/circles", {
+      const res = await apiFetch("/memberships/circles", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
         body: JSON.stringify({
           circleId,
           email,
@@ -326,233 +300,363 @@ export default function CirclePage() {
     }
   }
 
-  const authed = Boolean(token);
+
+  const handleLogout = async () => {
+    await logout();
+  };
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-50 flex items-center justify-center px-4">
-      <div className="w-full max-w-4xl space-y-6">
-        <header className="flex items-center justify-between">
+    <main className="min-h-screen bg-white dark:bg-gray-900 py-8 px-4 sm:px-6 lg:px-8">
+      <div className="w-full max-w-5xl mx-auto space-y-6">
+        <header className="flex flex-col gap-4 pb-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => router.push("/workspaces")}
+                className="inline-flex items-center text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors"
+              >
+                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                Back to workspaces
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => router.back()}
+                className="inline-flex items-center px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                Back
+              </button>
+              <button
+                onClick={handleLogout}
+                className="inline-flex items-center px-3 py-2 rounded-lg border border-red-300 dark:border-red-700 bg-white dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm font-medium hover:bg-red-50 dark:hover:bg-red-900/40 transition-colors"
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                Logout
+              </button>
+            </div>
+          </div>
           <div>
-            <button
-              onClick={() => router.push("/workspaces")}
-              className="text-[11px] text-slate-400 hover:text-slate-200 underline underline-offset-4 mb-1"
-            >
-              All workspaces
-            </button>
-            <h1 className="text-2xl font-semibold tracking-tight">
+            <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
               {circle?.name || "Circle"}
             </h1>
-            <p className="text-sm text-slate-300">
-              Manage dues events and members in this circle.
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+              Manage payment events and members in this circle
             </p>
+            {circle?.description && (
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-500">
+                {circle.description}
+              </p>
+            )}
           </div>
           {circle && (
-            <div className="text-right text-[11px] text-slate-500">
-              <p>
-                Created: {new Date(circle.createdAt).toLocaleDateString()}
-              </p>
-              {circle.description && (
-                <p className="max-w-xs text-slate-400 mt-1">
-                  {circle.description}
-                </p>
-              )}
+            <div className="inline-flex items-center px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 text-xs text-gray-600 dark:text-gray-400">
+              Created {new Date(circle.createdAt).toLocaleDateString()}
             </div>
           )}
         </header>
 
-        {!authed && (
-          <div className="rounded-xl border border-amber-500/40 bg-amber-950/40 px-4 py-3 text-xs text-amber-100">
-            No token found in <span className="font-mono">localStorage</span>.{" "}
-            Sign in again to access this circle.
+
+        {error && (
+          <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 px-4 py-3 flex items-start">
+            <svg className="w-5 h-5 text-red-600 dark:text-red-400 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
           </div>
         )}
 
-        {authed && error && (
-          <p className="text-xs text-red-400 bg-red-950/40 border border-red-900/50 rounded-md px-3 py-2">
-            {error}
-          </p>
-        )}
-
-        {authed && (
-          <section className="space-y-4">
+        <section className="space-y-6">
             {/* Create event form */}
-            <form
-              onSubmit={handleCreateEvent}
-              className="rounded-xl border border-slate-800 bg-slate-900/70 px-4 py-4 space-y-3"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <p className="text-sm font-medium">
-                    Create a dues event for this circle
-                  </p>
-                  <p className="text-[11px] text-slate-400">
-                    Example: &quot;Fall Dues&quot;, &quot;Tournament
-                    Buy-In&quot;, &quot;Trip Deposit&quot;.
-                  </p>
+            <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm overflow-hidden">
+              <div className="border-b border-gray-200 dark:border-gray-700 px-6 py-4">
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
+                  Create Payment Event
+                </h2>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Set up a new dues collection (e.g., Fall Dues, Tournament Buy-In)
+                </p>
+              </div>
+              <form onSubmit={handleCreateEvent} className="px-6 py-4">
+                <div className="flex flex-col gap-3 md:flex-row md:items-end md:gap-4">
+                  <div className="flex-1">
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                      Event Title
+                    </label>
+                    <input
+                      type="text"
+                      value={newTitle}
+                      onChange={(e) => setNewTitle(e.target.value)}
+                      placeholder="e.g., Fall Dues 2024"
+                      className="w-full rounded-lg bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 px-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow"
+                    />
+                  </div>
+                  <div className="w-full md:w-32">
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                      Amount
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={newAmount}
+                      onChange={(e) => setNewAmount(e.target.value)}
+                      placeholder="$0.00"
+                      className="w-full rounded-lg bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 px-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow"
+                    />
+                  </div>
+                  <div className="w-full md:w-40">
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                      Due Date
+                    </label>
+                    <input
+                      type="date"
+                      value={newDueDate}
+                      onChange={(e) => setNewDueDate(e.target.value)}
+                      className="w-full rounded-lg bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 px-4 py-2.5 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={
+                      creatingEvent ||
+                      !newTitle.trim() ||
+                      !newAmount.trim() ||
+                      !newDueDate.trim()
+                    }
+                    className="inline-flex items-center justify-center px-6 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {creatingEvent ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Creating...
+                      </>
+                    ) : (
+                      "Create"
+                    )}
+                  </button>
                 </div>
-              </div>
-
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
-                <input
-                  type="text"
-                  value={newTitle}
-                  onChange={(e) => setNewTitle(e.target.value)}
-                  placeholder="Event title"
-                  className="px-3 py-2 rounded-md bg-slate-950 border border-slate-700 text-sm flex-1"
-                />
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={newAmount}
-                  onChange={(e) => setNewAmount(e.target.value)}
-                  placeholder="Amount"
-                  className="px-3 py-2 rounded-md bg-slate-950 border border-slate-700 text-sm w-32"
-                />
-                <input
-                  type="date"
-                  value={newDueDate}
-                  onChange={(e) => setNewDueDate(e.target.value)}
-                  className="px-3 py-2 rounded-md bg-slate-950 border border-slate-700 text-sm w-40"
-                />
-                <button
-                  type="submit"
-                  disabled={
-                    creatingEvent ||
-                    !newTitle.trim() ||
-                    !newAmount.trim() ||
-                    !newDueDate.trim()
-                  }
-                  className="px-3 py-2 rounded-md text-sm bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-300"
-                >
-                  {creatingEvent ? "Creating..." : "Create event"}
-                </button>
-              </div>
-            </form>
+              </form>
+            </div>
 
             {/* Events list */}
-            <div className="rounded-xl border border-slate-800 bg-slate-900/70">
-              <div className="border-b border-slate-800 px-4 py-2 flex items-center justify-between">
-                <p className="text-xs font-semibold tracking-wide text-slate-300">
-                  Dues events
-                </p>
+            <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm overflow-hidden">
+              <div className="border-b border-gray-200 dark:border-gray-700 px-6 py-4">
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
+                  Payment Events
+                </h2>
+                {events.length > 0 && (
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {events.length} {events.length === 1 ? "event" : "events"}
+                  </p>
+                )}
               </div>
 
               {loadingEvents ? (
-                <div className="px-4 py-4 text-xs text-slate-400">
-                  Loading events…
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                 </div>
               ) : events.length === 0 ? (
-                <div className="px-4 py-4 text-xs text-slate-400">
-                  No dues events yet. Create one above to start tracking
-                  payments.
+                <div className="text-center py-8 px-6">
+                  <svg
+                    className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1.5}
+                      d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                    />
+                  </svg>
+                  <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
+                    No payment events yet
+                  </p>
+                  <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                    Create one above to start tracking payments
+                  </p>
                 </div>
               ) : (
-                <ul className="divide-y divide-slate-800">
+                <div className="divide-y divide-gray-200 dark:divide-gray-700">
                   {events.map((ev) => (
-                    <li
+                    <div
                       key={ev.id}
-                      className="px-4 py-3 flex items-center justify-between hover:bg-slate-950/70 cursor-pointer"
+                      className="px-6 py-4 hover:bg-gray-100 dark:hover:bg-gray-900/50 cursor-pointer transition-colors"
                       onClick={() =>
                         router.push(
                           `/payment-events/${encodeURIComponent(ev.id)}`
                         )
                       }
                     >
-                      <div>
-                        <p className="text-sm font-medium">{ev.title}</p>
-                        <p className="text-[11px] text-slate-400">
-                          ${ev.amount.toFixed(2)} · Due{" "}
-                          {new Date(ev.dueDate).toLocaleDateString()}
-                        </p>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3 flex-1 min-w-0">
+                          <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-sm">
+                            <svg
+                              className="w-5 h-5 text-white"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                              />
+                            </svg>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                              {ev.title}
+                            </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              ${ev.amount.toFixed(2)} · Due{" "}
+                              {new Date(ev.dueDate).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-gray-400 dark:text-gray-500">
+                            {new Date(ev.createdAt).toLocaleDateString()}
+                          </span>
+                          <svg
+                            className="w-5 h-5 text-gray-400 dark:text-gray-600"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M9 5l7 7-7 7"
+                            />
+                          </svg>
+                        </div>
                       </div>
-                      <span className="text-[11px] text-slate-500">
-                        Created{" "}
-                        {new Date(ev.createdAt).toLocaleDateString()}
-                      </span>
-                    </li>
+                    </div>
                   ))}
-                </ul>
+                </div>
               )}
             </div>
 
             {/* Members list + invite */}
-            <div className="rounded-xl border border-slate-800 bg-slate-900/70">
-              <div className="border-b border-slate-800 px-4 py-2 flex items-center justify-between">
-                <p className="text-xs font-semibold tracking-wide text-slate-300">
-                  Members
-                </p>
+            <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm overflow-hidden">
+              <div className="border-b border-gray-200 dark:border-gray-700 px-6 py-4">
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
+                  Circle Members
+                </h2>
+                {members.length > 0 && (
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {members.length} {members.length === 1 ? "member" : "members"}
+                  </p>
+                )}
               </div>
 
-              <div className="p-4 space-y-4">
+              <div className="px-6 py-4 space-y-4">
                 <form
                   onSubmit={handleInviteMember}
-                  className="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between"
+                  className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/50 p-4"
                 >
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">
-                      Add a member to this circle
-                    </p>
-                    <p className="text-[11px] text-slate-400">
-                      They&apos;ll be able to see events and be tracked for
-                      payments.
+                  <div className="mb-3">
+                    <h3 className="text-sm font-medium text-gray-900 dark:text-white">
+                      Add Member
+                    </h3>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Invite someone to this circle to track their payments
                     </p>
                   </div>
-                  <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                     <input
                       type="email"
                       value={inviteEmail}
                       onChange={(e) => setInviteEmail(e.target.value)}
                       placeholder="email@example.com"
-                      className="px-3 py-2 rounded-md bg-slate-950 border border-slate-700 text-sm min-w-[200px]"
+                      className="flex-1 rounded-lg bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 px-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow"
                     />
                     <input
                       type="text"
                       value={inviteName}
                       onChange={(e) => setInviteName(e.target.value)}
                       placeholder="Name (optional)"
-                      className="px-3 py-2 rounded-md bg-slate-950 border border-slate-700 text-sm min-w-[160px]"
+                      className="flex-1 sm:flex-initial sm:w-40 rounded-lg bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 px-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow"
                     />
                     <button
                       type="submit"
                       disabled={inviting || !inviteEmail.trim()}
-                      className="px-3 py-2 rounded-md text-sm bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-300"
+                      className="inline-flex items-center justify-center px-6 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors"
                     >
-                      {inviting ? "Adding..." : "Add member"}
+                      {inviting ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                          Adding...
+                        </>
+                      ) : (
+                        "Add"
+                      )}
                     </button>
                   </div>
                 </form>
 
                 {loadingMembers ? (
-                  <p className="text-xs text-slate-400">
-                    Loading members…
-                  </p>
+                  <div className="flex items-center justify-center py-6">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  </div>
                 ) : members.length === 0 ? (
-                  <p className="text-xs text-slate-400">
-                    No members yet. Add someone above to start tracking
-                    their dues.
-                  </p>
+                  <div className="text-center py-6">
+                    <svg
+                      className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-600"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={1.5}
+                        d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
+                      />
+                    </svg>
+                    <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
+                      No members yet
+                    </p>
+                    <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                      Add someone above to start tracking their dues
+                    </p>
+                  </div>
                 ) : (
-                  <ul className="divide-y divide-slate-800">
+                  <div className="space-y-2">
                     {members.map((m) => (
-                      <li
+                      <div
                         key={m.id}
-                        className="px-2 py-2 flex items-center justify-between"
+                        className="flex items-center space-x-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/50 px-4 py-3"
                       >
-                        <div>
-                          <p className="text-sm">{m.name || m.email}</p>
-                          <p className="text-[11px] text-slate-500">
+                        <div className="flex-shrink-0 w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white font-semibold text-sm">
+                          {(m.name || m.email).charAt(0).toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                            {m.name || m.email.split("@")[0]}
+                          </p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
                             {m.email}
                           </p>
                         </div>
-                      </li>
+                      </div>
                     ))}
-                  </ul>
+                  </div>
                 )}
               </div>
             </div>
           </section>
-        )}
       </div>
     </main>
   );

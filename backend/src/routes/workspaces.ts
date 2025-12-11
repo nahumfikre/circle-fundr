@@ -297,92 +297,83 @@ workspaceRouter.delete("/:id", async (req: Request, res: Response) => {
   }
 });
 
-// DELETE /workspaces/:id
-// Only workspace ADMIN can delete. This will delete the workspace,
-// its circles, memberships, payment events, and payments.
-workspaceRouter.delete("/:id", async (req: Request, res: Response) => {
+/**
+ * POST /workspaces/:id/members
+ * Add a member to a workspace by email (admin only)
+ *
+ * Body: { "email": "user@example.com", "role": "MEMBER" | "ADMIN" }
+ */
+workspaceRouter.post("/:id/members", async (req: Request, res: Response) => {
   try {
     const userId = (req as any).userId as string;
     const { id } = req.params;
+    const { email, role } = req.body as { email?: string; role?: "MEMBER" | "ADMIN" };
 
-    // Make sure workspace exists
-    const workspace = await prisma.workspace.findUnique({
-      where: { id },
-    });
-
-    if (!workspace) {
-      return res.status(404).json({ message: "Workspace not found" });
+    if (!email || typeof email !== "string") {
+      return res.status(400).json({ message: "Email is required" });
     }
 
-    // Check that the user is an admin in this workspace
-    const member = await prisma.workspaceMember.findFirst({
+    // Check if current user is an admin of this workspace
+    const currentMember = await prisma.workspaceMember.findFirst({
       where: {
         userId,
         workspaceId: id,
       },
     });
 
-    if (!member || member.role !== "ADMIN") {
-      return res.status(403).json({ message: "Only workspace admins can delete workspaces" });
+    if (!currentMember || currentMember.role !== "ADMIN") {
+      return res.status(403).json({ message: "Only admins can add members to workspace" });
     }
 
-    // Find all circles in this workspace
-    const circles = await prisma.circle.findMany({
-      where: { workspaceId: id },
-      select: { id: true },
+    // Find the user by email
+    const userToAdd = await prisma.user.findUnique({
+      where: { email: email.trim() },
     });
-    const circleIds = circles.map((c) => c.id);
 
-    // Find all events for those circles
-    const events = await prisma.paymentEvent.findMany({
+    if (!userToAdd) {
+      return res.status(404).json({ message: "User with that email not found. They must create an account first." });
+    }
+
+    // Check if user is already a member
+    const existingMembership = await prisma.workspaceMember.findFirst({
       where: {
-        circleId: { in: circleIds },
+        userId: userToAdd.id,
+        workspaceId: id,
       },
-      select: { id: true },
     });
-    const eventIds = events.map((e) => e.id);
 
-    // Delete everything in a transaction
-    await prisma.$transaction([
-      // payments tied to those events
-      prisma.payment.deleteMany({
-        where: {
-          paymentEventId: { in: eventIds },
-        },
-      }),
-      // events
-      prisma.paymentEvent.deleteMany({
-        where: {
-          circleId: { in: circleIds },
-        },
-      }),
-      // circle memberships
-      prisma.membership.deleteMany({
-        where: {
-          circleId: { in: circleIds },
-        },
-      }),
-      // circles
-      prisma.circle.deleteMany({
-        where: {
-          id: { in: circleIds },
-        },
-      }),
-      // workspace members
-      prisma.workspaceMember.deleteMany({
-        where: {
-          workspaceId: id,
-        },
-      }),
-      // workspace itself
-      prisma.workspace.delete({
-        where: { id },
-      }),
-    ]);
+    if (existingMembership) {
+      return res.status(409).json({ message: "User is already a member of this workspace" });
+    }
 
-    return res.status(200).json({ message: "Workspace deleted" });
+    // Add the user as a member
+    const newMember = await prisma.workspaceMember.create({
+      data: {
+        userId: userToAdd.id,
+        workspaceId: id,
+        role: role || "MEMBER",
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    return res.status(201).json({
+      member: {
+        id: newMember.user.id,
+        name: newMember.user.name,
+        email: newMember.user.email,
+        role: newMember.role,
+      },
+    });
   } catch (err) {
-    console.error("Delete workspace error:", err);
+    console.error("Add workspace member error:", err);
     return res.status(500).json({ message: "Something went wrong" });
   }
 });

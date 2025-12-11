@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { apiFetch } from "@/lib/api";
 
 type EventSummary = {
   id: string;
@@ -21,7 +22,6 @@ export default function CircleDuesPage() {
   const router = useRouter();
   const circleId = params.circleId;
 
-  const [token, setToken] = useState<string | null>(null);
   const [events, setEvents] = useState<EventSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -32,24 +32,16 @@ export default function CircleDuesPage() {
   const [amount, setAmount] = useState<string>("20");
   const [dueDate, setDueDate] = useState<string>("");
 
-  useEffect(() => {
-    const stored = localStorage.getItem("circlefundr_token");
-    setToken(stored);
-  }, []);
-
-  async function loadEvents(currentToken: string, currentCircleId: string) {
+  async function loadEvents(currentCircleId: string) {
     setLoading(true);
     setError(null);
 
     try {
-      const url = `http://localhost:4000/payment-events/by-circle?circleId=${encodeURIComponent(
+      const url = `/payment-events/by-circle?circleId=${encodeURIComponent(
         currentCircleId
       )}`;
 
-      const res = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${currentToken}`,
-        },
+      const res = await apiFetch(url, {
         cache: "no-store",
       });
 
@@ -79,13 +71,13 @@ export default function CircleDuesPage() {
   }
 
   useEffect(() => {
-    if (!token || !circleId) return;
-    loadEvents(token, circleId);
-  }, [token, circleId]);
+    if (!circleId) return;
+    loadEvents(circleId);
+  }, [circleId]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!token || !circleId) return;
+    if (!circleId) return;
     if (!title.trim() || !dueDate.trim()) {
       setError("Title and due date are required");
       return;
@@ -101,12 +93,8 @@ export default function CircleDuesPage() {
     setError(null);
 
     try {
-      const res = await fetch("http://localhost:4000/payment-events", {
+      const res = await apiFetch("/payment-events", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({
           title: title.trim(),
           amount: amountNumber,

@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
+import { env } from "../config/env";
 
 interface JwtPayload {
   userId: string;
@@ -10,19 +11,25 @@ export function authMiddleware(
   res: Response,
   next: NextFunction
 ) {
-  const header = req.headers.authorization;
+  // First, try to get token from HTTP-only cookie (preferred method)
+  let token = req.cookies?.access_token;
 
-  if (!header || !header.startsWith("Bearer ")) {
-    return res
-      .status(401)
-      .json({ message: "Missing or invalid authorization header" });
+  // Fallback: check Authorization header for backward compatibility
+  if (!token) {
+    const header = req.headers.authorization;
+    if (header && header.startsWith("Bearer ")) {
+      token = header.substring("Bearer ".length).trim();
+    }
   }
 
-  const token = header.substring("Bearer ".length).trim();
+  if (!token) {
+    return res
+      .status(401)
+      .json({ message: "Missing or invalid authentication credentials" });
+  }
 
   try {
-    const secret = process.env.JWT_SECRET || "dev-secret-change-later";
-    const decoded = jwt.verify(token, secret) as JwtPayload;
+    const decoded = jwt.verify(token, env.jwtSecret) as JwtPayload;
 
     (req as any).userId = decoded.userId;
 

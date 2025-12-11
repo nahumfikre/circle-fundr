@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { apiFetch } from "@/lib/api";
 
 export default function JoinWorkspacePage() {
   const [code, setCode] = useState("");
@@ -20,21 +21,11 @@ export default function JoinWorkspacePage() {
       return;
     }
 
-    const token = localStorage.getItem("circlefundr_token");
-    if (!token) {
-      setError("You need to be signed in first.");
-      return;
-    }
-
     setSubmitting(true);
 
     try {
-      const res = await fetch("http://localhost:4000/workspaces/join", {
+      const res = await apiFetch("/workspaces/join", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({ inviteCode: trimmed }),
       });
 

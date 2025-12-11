@@ -7,48 +7,35 @@ const paymentEventRouter = Router();
 // All payment event routes require auth
 paymentEventRouter.use(authMiddleware);
 
-async function ensureCircleAdmin(userId: string, circleId: string) {
-  const circle = await prisma.circle.findUnique({
-    where: { id: circleId },
-    include: {
-      workspace: true,
-    },
-  });
-
-  if (!circle) {
-    return {
-      ok: false as const,
-      status: 404,
-      message: "Circle not found",
-    };
-  }
-
-  const member = await prisma.workspaceMember.findFirst({
+/**
+ * Check if user is a member of the circle
+ * Any circle member can create payment events and become the organizer
+ */
+async function ensureCircleMembership(userId: string, circleId: string) {
+  const membership = await prisma.membership.findUnique({
     where: {
-      userId,
-      workspaceId: circle.workspaceId,
+      userId_circleId: {
+        userId,
+        circleId,
+      },
+    },
+    include: {
+      circle: true,
     },
   });
 
-  if (!member) {
+  if (!membership) {
     return {
       ok: false as const,
       status: 403,
-      message: "You do not belong to this workspace",
-    };
-  }
-
-  if (member.role !== "ADMIN") {
-    return {
-      ok: false as const,
-      status: 403,
-      message: "Only admins can create dues events",
+      message: "You must be a circle member to create payment events",
     };
   }
 
   return {
     ok: true as const,
-    circle,
+    membership,
+    circle: membership.circle,
   };
 }
 
@@ -100,20 +87,22 @@ paymentEventRouter.post("/", async (req: Request, res: Response) => {
       return res.status(400).json({ message: "dueDate must be a valid date" });
     }
 
-    // Make sure requester is an ADMIN in the workspace that owns this circle
-    const check = await ensureCircleAdmin(userId, circleId);
+    // Make sure requester is a member of the circle
+    const check = await ensureCircleMembership(userId, circleId);
 
     if (!check.ok) {
       return res.status(check.status).json({ message: check.message });
     }
 
-    // Create the payment event
+    // Create the payment event with current user as organizer
     const event = await prisma.paymentEvent.create({
       data: {
         title: cleanTitle,
         amount: amountNumber,
         dueDate: parsedDate,
         circleId,
+        organizerId: userId, // Current user becomes the organizer
+        poolBalance: 0, // Initialize pool balance
       },
     });
 

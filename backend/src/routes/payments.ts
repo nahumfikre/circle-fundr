@@ -73,6 +73,8 @@ paymentRouter.get("/by-event/:eventId", async (req: Request, res: Response) => {
             workspace: true,
           },
         },
+        organizer: true,
+        payouts: true,
       },
     });
 
@@ -80,7 +82,7 @@ paymentRouter.get("/by-event/:eventId", async (req: Request, res: Response) => {
       return res.status(404).json({ message: "Payment event not found" });
     }
 
-    // Ensure the user belongs to this circle
+    // Make sure the current user actually belongs to this circle
     const membershipCheck = await ensureCircleMembership(userId, event.circleId);
     if (!membershipCheck.ok) {
       return res
@@ -88,13 +90,24 @@ paymentRouter.get("/by-event/:eventId", async (req: Request, res: Response) => {
         .json({ message: membershipCheck.message });
     }
 
-    // Ensure payments exist for all circle members
+    // Check if user is workspace admin
+    const workspaceMember = await prisma.workspaceMember.findUnique({
+      where: {
+        userId_workspaceId: {
+          userId,
+          workspaceId: event.circle.workspaceId,
+        },
+      },
+    });
+    const isAdmin = workspaceMember?.role === "ADMIN";
+
+    // Load all circle memberships so we can guarantee one Payment per member
     const circleMemberships = await prisma.membership.findMany({
       where: { circleId: event.circleId },
       include: { user: true },
     });
 
-    // create missing payments
+    // Ensure there is a Payment row for each membership
     for (const m of circleMemberships) {
       await prisma.payment.upsert({
         where: {
@@ -132,6 +145,15 @@ paymentRouter.get("/by-event/:eventId", async (req: Request, res: Response) => {
       },
     });
 
+    // Calculate pool statistics
+    const totalPaidIn = payments
+      .filter((p) => p.status === "PAID")
+      .reduce((sum, p) => sum + p.amountPaid, 0);
+
+    const totalPaidOut = event.payouts
+      .filter((p) => ["pending", "in_transit", "paid"].includes(p.status))
+      .reduce((sum, p) => sum + p.amount, 0);
+
     return res.json({
       event: {
         id: event.id,
@@ -159,7 +181,17 @@ paymentRouter.get("/by-event/:eventId", async (req: Request, res: Response) => {
           email: p.membership.user.email,
         },
       })),
+      poolInfo: {
+        balance: event.poolBalance,
+        totalPaidIn,
+        totalPaidOut,
+        organizerId: event.organizerId,
+        organizerName: event.organizer.name,
+        organizerOnboarded: event.organizer.stripePayoutsEnabled,
+      },
       currentUserId: userId,
+      isAdmin,
+      isOrganizer: userId === event.organizerId,
     });
   } catch (err) {
     console.error("Error loading payments by event:", err);
@@ -169,12 +201,18 @@ paymentRouter.get("/by-event/:eventId", async (req: Request, res: Response) => {
 
 // POST /payments/:paymentId/mark-paid
 // Manual override for admins (for cash/Venmo/etc.)
+// Body: { amount: number }
 paymentRouter.post(
   "/:paymentId/mark-paid",
   async (req: Request, res: Response) => {
     try {
       const { paymentId } = req.params;
       const userId = getUserId(req);
+      const { amount } = req.body as { amount?: number };
+
+      if (typeof amount !== "number" || amount <= 0) {
+        return res.status(400).json({ message: "Amount must be specified and greater than zero" });
+      }
 
       const payment = await prisma.payment.findUnique({
         where: { id: paymentId },
@@ -209,13 +247,18 @@ paymentRouter.post(
           .json({ message: adminCheck.message });
       }
 
+      // Add the manual amount to existing amount paid
+      const newAmountPaid = payment.amountPaid + amount;
+
       const updated = await prisma.payment.update({
         where: { id: payment.id },
         data: {
           status: "PAID",
-          amountPaid: payment.event.amount,
           method: "MANUAL",
           paidAt: new Date(),
+          amountPaid: newAmountPaid,
+          // Store the manual amount so we can undo it later
+          stripeIntentId: `manual_${amount}`,
         },
         include: {
           membership: {
@@ -239,8 +282,80 @@ paymentRouter.post(
   }
 );
 
+// POST /payments/:paymentId/undo-manual
+// Undo a manual payment (admin only)
+paymentRouter.post(
+  "/:paymentId/undo-manual",
+  async (req: Request, res: Response) => {
+    try {
+      const { paymentId } = req.params;
+      const userId = getUserId(req);
+
+      const payment = await prisma.payment.findUnique({
+        where: { id: paymentId },
+        include: {
+          event: {
+            include: {
+              circle: {
+                include: {
+                  workspace: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!payment) {
+        return res.status(404).json({ message: "Payment not found" });
+      }
+
+      const workspaceId = payment.event.circle.workspaceId;
+      const adminCheck = await ensureWorkspaceAdmin(userId, workspaceId);
+
+      if (!adminCheck.ok) {
+        return res
+          .status(adminCheck.status)
+          .json({ message: adminCheck.message });
+      }
+
+      // Check if this was a manual payment
+      if (payment.method !== "MANUAL" || !payment.stripeIntentId?.startsWith("manual_")) {
+        return res.status(400).json({ message: "This payment was not manually marked as paid" });
+      }
+
+      // Extract the manual amount from stripeIntentId
+      const manualAmount = parseFloat(payment.stripeIntentId.replace("manual_", ""));
+      const newAmountPaid = Math.max(0, payment.amountPaid - manualAmount);
+
+      const updated = await prisma.payment.update({
+        where: { id: payment.id },
+        data: {
+          status: "PENDING",
+          method: "STRIPE",
+          paidAt: null,
+          amountPaid: newAmountPaid,
+          stripeIntentId: null,
+        },
+      });
+
+      return res.json({
+        id: updated.id,
+        status: updated.status,
+        amountPaid: updated.amountPaid,
+        method: updated.method,
+        paidAt: updated.paidAt,
+      });
+    } catch (err) {
+      console.error("Error undoing manual payment:", err);
+      return res.status(500).json({ message: "Something went wrong" });
+    }
+  }
+);
+
 // POST /payments/:paymentId/create-checkout-session
 // Creates a Stripe Checkout Session for the current user to pay their share.
+// Now supports partial payments via `amount` in the request body.
 paymentRouter.post(
   "/:paymentId/create-checkout-session",
   async (req: Request, res: Response) => {
@@ -253,6 +368,7 @@ paymentRouter.post(
 
       const { paymentId } = req.params;
       const userId = getUserId(req);
+      const { amount } = req.body as { amount?: number };
 
       const payment = await prisma.payment.findUnique({
         where: { id: paymentId },
@@ -290,7 +406,16 @@ paymentRouter.post(
       const circle = payment.membership.circle;
       const workspace = event.circle.workspace;
 
-      const amountInCents = Math.round(event.amount * 100);
+      // Determine charge amount - user can specify any amount
+      let chargeAmount = amount;
+
+      if (typeof chargeAmount !== "number" || chargeAmount <= 0) {
+        return res
+          .status(400)
+          .json({ message: "Amount must be specified and greater than zero" });
+      }
+
+      const amountInCents = Math.round(chargeAmount * 100);
 
       const session = await stripe.checkout.sessions.create({
         mode: "payment",
@@ -314,6 +439,7 @@ paymentRouter.post(
           paymentEventId: payment.paymentEventId,
           membershipId: payment.membershipId,
           userId,
+          chargeAmount: String(chargeAmount),
         },
         success_url: `${env.frontendUrl}/payment-events/${event.id}?success=true`,
         cancel_url: `${env.frontendUrl}/payment-events/${event.id}?canceled=true`,

@@ -8,13 +8,29 @@ generator client {
 }
 
 model User {
-  id          String           @id @default(uuid())
-  name        String
-  email       String           @unique
-  password    String
-  createdAt   DateTime         @default(now())
-  memberships Membership[]
-  workspaces  WorkspaceMember[]
+  id                 String           @id @default(uuid())
+  name               String
+  email              String           @unique
+  password           String?
+  googleId           String?          @unique
+  emailVerified      Boolean          @default(false)
+  verificationCode   String?
+  verificationExpiry DateTime?
+  createdAt          DateTime         @default(now())
+
+  // Stripe Connect fields
+  stripeAccountId         String?   @unique
+  stripeOnboardingStatus  String?   // "pending" | "complete" | "restricted"
+  stripeDetailsSubmitted  Boolean   @default(false)
+  stripePayoutsEnabled    Boolean   @default(false)
+  stripeOnboardedAt       DateTime?
+
+  memberships        Membership[]
+  workspaces         WorkspaceMember[]
+  organizedEvents    PaymentEvent[]
+  payouts            Payout[]
+
+  @@index([stripeAccountId])
 }
 
 model Workspace {
@@ -73,8 +89,19 @@ model PaymentEvent {
   circleId   String
   createdAt  DateTime  @default(now())
 
+  // Organizer tracking
+  organizerId     String
+  organizer       User      @relation(fields: [organizerId], references: [id])
+
+  // Pool balance tracking
+  poolBalance     Float     @default(0)
+
   circle     Circle    @relation(fields: [circleId], references: [id])
   payments   Payment[]
+  payouts    Payout[]
+
+  @@index([circleId])
+  @@index([organizerId])
 }
 
 model Payment {
@@ -85,6 +112,12 @@ model Payment {
   method           String        // "STRIPE" or "MANUAL"
   status           String        // "PAID", "PENDING", "FAILED"
   stripeIntentId   String?
+
+  // Pool transfer tracking
+  stripeCheckoutSessionId String?
+  stripeTransferId        String?
+  transferredAt           DateTime?
+
   paidAt           DateTime?
   createdAt        DateTime      @default(now())
 
@@ -92,4 +125,33 @@ model Payment {
   membership       Membership    @relation(fields: [membershipId], references: [id])
 
   @@unique([paymentEventId, membershipId])
+  @@index([stripeCheckoutSessionId])
+}
+
+model Payout {
+  id                String       @id @default(uuid())
+  paymentEventId    String
+  organizerId       String
+  amount            Float
+
+  // Stripe metadata
+  stripePayoutId    String?      @unique
+  stripeTransferId  String?      @unique
+
+  // Status tracking
+  status            String       // "pending" | "in_transit" | "paid" | "failed"
+  failureReason     String?
+
+  // Timing
+  requestedAt       DateTime     @default(now())
+  expectedAt        DateTime?
+  arrivedAt         DateTime?
+
+  // Relations
+  event             PaymentEvent @relation(fields: [paymentEventId], references: [id])
+  organizer         User         @relation(fields: [organizerId], references: [id])
+
+  @@index([paymentEventId])
+  @@index([organizerId])
+  @@index([status])
 }
