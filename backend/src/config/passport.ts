@@ -6,12 +6,17 @@ import { env } from "./env";
 const googleClientId = env.googleClientId || "dummy-client-id";
 const googleClientSecret = env.googleClientSecret || "dummy-client-secret";
 
+// Determine the backend URL based on environment
+const backendUrl = env.isProduction
+  ? process.env.BACKEND_URL || 'https://circle-fundr.onrender.com'
+  : `http://localhost:${env.port}`;
+
 passport.use(
   new GoogleStrategy(
     {
       clientID: googleClientId,
       clientSecret: googleClientSecret,
-      callbackURL: `http://localhost:${env.port}/auth/google/callback`,
+      callbackURL: `${backendUrl}/auth/google/callback`,
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
