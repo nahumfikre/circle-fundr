@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { promises as dns } from "dns";
 import prisma from "../config/prisma";

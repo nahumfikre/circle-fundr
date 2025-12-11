@@ -66,9 +66,9 @@ webhookRouter.post(
         }
 
         case "account.application.deauthorized": {
-          const account = event.data.object as Stripe.Account;
+          const account = event.data.object;
           console.log("❌ Processing account.application.deauthorized");
-          await handleAccountDeauthorized(account);
+          await handleAccountDeauthorized(account as Stripe.Account);
           break;
         }
 
@@ -81,9 +81,9 @@ webhookRouter.post(
         }
 
         case "transfer.failed": {
-          const transfer = event.data.object as Stripe.Transfer;
+          const transfer = event.data.object;
           console.log("⚠️  Processing transfer.failed");
-          await handleTransferFailed(transfer);
+          await handleTransferFailed(transfer as any);
           break;
         }
 
@@ -307,7 +307,7 @@ async function handleTransferCreated(transfer: Stripe.Transfer) {
  * Handle transfer failure
  * Refunds pool balance and marks payout as failed
  */
-async function handleTransferFailed(transfer: Stripe.Transfer) {
+async function handleTransferFailed(transfer: any) {
   console.log("📋 Transfer ID:", transfer.id);
   console.log("❌ Failure code:", transfer.failure_code);
   console.log("❌ Failure message:", transfer.failure_message);
