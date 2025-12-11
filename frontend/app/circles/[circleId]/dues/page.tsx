@@ -136,8 +136,6 @@ export default function CircleDuesPage() {
     }
   }
 
-  const authed = Boolean(token);
-
   return (
     <main className="min-h-screen bg-slate-950 text-slate-50 flex items-center justify-center px-4">
       <div className="w-full max-w-4xl space-y-6">
@@ -164,16 +162,7 @@ export default function CircleDuesPage() {
           </button>
         </header>
 
-        {!authed && (
-          <div className="rounded-xl border border-amber-500/40 bg-amber-950/40 px-4 py-3 text-xs text-amber-100">
-            No token found in{" "}
-            <span className="font-mono">localStorage</span>. Sign in again,
-            then come back here.
-          </div>
-        )}
-
-        {authed && (
-          <div className="space-y-6">
+        <div className="space-y-6">
             {/* Create dues event form */}
             <section className="rounded-xl border border-slate-800 bg-slate-900/70 px-4 py-4 space-y-4">
               <h2 className="text-sm font-semibold text-slate-100">
@@ -282,8 +271,7 @@ export default function CircleDuesPage() {
                 ))}
               </div>
             </section>
-          </div>
-        )}
+        </div>
       </div>
     </main>
   );
