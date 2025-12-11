@@ -49,6 +49,14 @@ webhookRouter.post(
 
     // Handle the event
     try {
+      // Handle transfer.failed separately (not in Stripe's official types)
+      if (event.type === "transfer.failed" as any) {
+        const transfer = (event as any).data.object;
+        console.log("⚠️  Processing transfer.failed");
+        await handleTransferFailed(transfer);
+        return res.json({ received: true });
+      }
+
       switch (event.type) {
         case "checkout.session.completed": {
           const session = event.data.object as Stripe.Checkout.Session;
@@ -66,9 +74,9 @@ webhookRouter.post(
         }
 
         case "account.application.deauthorized": {
-          const account = event.data.object;
+          const account = event.data.object as unknown as Stripe.Account;
           console.log("❌ Processing account.application.deauthorized");
-          await handleAccountDeauthorized(account as Stripe.Account);
+          await handleAccountDeauthorized(account);
           break;
         }
 
@@ -80,17 +88,6 @@ webhookRouter.post(
           break;
         }
 
-        case "transfer.failed": {
-          const transfer = event.data.object;
-          console.log("⚠️  Processing transfer.failed");
-          await handleTransferFailed(transfer as any);
-          break;
-        }
-
-        // Note: Stripe Connect transfers don't trigger payout events
-        // The transfer goes to the Connect account's balance,
-        // then Stripe automatically pays it out to the bank account
-
         default:
           console.log(`ℹ️  Unhandled event type: ${event.type}`);
       }
@@ -98,10 +95,12 @@ webhookRouter.post(
       return res.json({ received: true });
     } catch (err) {
       console.error("❌ Error processing webhook event:", err);
-      return res.status(500).json({ message: "Webhook processing failed" });
+      return res.status(500).json({ message: "Webhook handler failed" });
     }
   }
 );
+
+export default webhookRouter;
 
 async function handleCheckoutSessionCompleted(
   session: Stripe.Checkout.Session
