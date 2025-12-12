@@ -172,7 +172,29 @@ router.post("/register", authLimiter, async (req: Request, res: Response) => {
 
     if (!emailSent) {
       console.error("Failed to send verification email to:", email);
-      // Delete the user if email failed to send
+      // In production, auto-verify if email can't be sent (SMTP blocked)
+      if (env.isProduction) {
+        console.log("⚠️  Auto-verifying user in production due to email delivery failure");
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { emailVerified: true },
+        });
+
+        const token = signToken(user.id);
+        setTokenCookie(res, token);
+
+        return res.status(201).json({
+          message: "Account created! (Email verification bypassed)",
+          user: {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            emailVerified: true,
+          },
+        });
+      }
+
+      // In development, fail if email can't be sent
       await prisma.user.delete({
         where: { id: user.id },
       });
