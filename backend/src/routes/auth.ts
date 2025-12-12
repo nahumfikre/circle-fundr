@@ -88,7 +88,7 @@ function setTokenCookie(res: Response, token: string) {
   res.cookie("access_token", token, {
     httpOnly: true, // Prevents XSS attacks
     secure: env.isProduction, // HTTPS only in production
-    sameSite: "lax", // CSRF protection
+    sameSite: env.isProduction ? "none" : "lax", // "none" for cross-site in production
     maxAge: 2 * 60 * 60 * 1000, // 2 hours in milliseconds
   });
 }
@@ -403,7 +403,7 @@ router.post("/logout", (_req: Request, res: Response) => {
   res.clearCookie("access_token", {
     httpOnly: true,
     secure: env.isProduction,
-    sameSite: "lax",
+    sameSite: env.isProduction ? "none" : "lax",
   });
   return res.status(200).json({ message: "Logged out successfully" });
 });
