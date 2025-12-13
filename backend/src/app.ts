@@ -17,6 +17,9 @@ import { env } from "./config/env";
 
 const app = express();
 
+// Trust proxy for Render deployment (needed for rate limiting and IP detection)
+app.set('trust proxy', 1);
+
 // Security: Add security headers
 app.use(helmet());
 
