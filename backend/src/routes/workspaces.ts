@@ -246,6 +246,16 @@ workspaceRouter.delete("/:id", async (req: Request, res: Response) => {
     }
 
     await prisma.$transaction([
+      // Delete payouts first (they reference payment events)
+      prisma.payout.deleteMany({
+        where: {
+          event: {
+            circle: {
+              workspaceId: id,
+            },
+          },
+        },
+      }),
       // Delete payments linked to events in any circle in this workspace
       prisma.payment.deleteMany({
         where: {
