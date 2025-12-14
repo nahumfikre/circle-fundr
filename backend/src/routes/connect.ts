@@ -61,6 +61,7 @@ router.post("/onboard", async (req: Request, res: Response) => {
         country: "US",
         email: user.email,
         capabilities: {
+          card_payments: { requested: true },
           transfers: { requested: true },
         },
         business_type: "individual",
