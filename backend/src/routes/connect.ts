@@ -27,6 +27,33 @@ router.post("/onboard", async (req: Request, res: Response) => {
 
     let accountId = user.stripeAccountId;
 
+    // If user has an account ID, verify it exists in current Stripe mode (test vs live)
+    if (accountId) {
+      try {
+        await stripe.accounts.retrieve(accountId);
+      } catch (error: any) {
+        // Account doesn't exist (likely from test mode when now in live mode)
+        if (error.code === "resource_missing") {
+          console.log(`⚠️  Stripe account ${accountId} not found in current mode. Creating new account.`);
+          accountId = null;
+
+          // Clear the old test mode account ID
+          await prisma.user.update({
+            where: { id: userId },
+            data: {
+              stripeAccountId: null,
+              stripeOnboardingStatus: null,
+              stripeDetailsSubmitted: false,
+              stripePayoutsEnabled: false,
+              stripeOnboardedAt: null,
+            },
+          });
+        } else {
+          throw error;
+        }
+      }
+    }
+
     // Create Connect account if it doesn't exist
     if (!accountId) {
       const account = await stripe.accounts.create({
@@ -190,9 +217,35 @@ router.post("/refresh", async (req: Request, res: Response) => {
       });
     }
 
+    let accountId = user.stripeAccountId;
+
+    // Verify account exists in current Stripe mode
+    try {
+      await stripe.accounts.retrieve(accountId);
+    } catch (error: any) {
+      if (error.code === "resource_missing") {
+        // Clear old account and redirect to start onboarding
+        await prisma.user.update({
+          where: { id: userId },
+          data: {
+            stripeAccountId: null,
+            stripeOnboardingStatus: null,
+            stripeDetailsSubmitted: false,
+            stripePayoutsEnabled: false,
+            stripeOnboardedAt: null,
+          },
+        });
+
+        return res.status(400).json({
+          message: "Account not found. Please start onboarding again.",
+        });
+      }
+      throw error;
+    }
+
     // Generate new account link
     const accountLink = await stripe.accountLinks.create({
-      account: user.stripeAccountId,
+      account: accountId,
       refresh_url: `${env.frontendUrl}/connect/refresh`,
       return_url: `${env.frontendUrl}/dashboard`,
       type: "account_onboarding",
